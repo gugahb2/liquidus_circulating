@@ -12,6 +12,7 @@ router.get('/', function(req, res, next) {
   res.render('index', { title: 'Express' });
 });
 
+/* GET circulate */
 router.get('/circulate', async function(req, res, next) {
   const response = await axios.get(queryUrl(bscscanAPI, {
     module: 'stats',
