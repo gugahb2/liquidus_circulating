@@ -47,7 +47,7 @@ router.get('/circulate', async function(req, res, next) {
   }
 
   const circulating = totalSupply - holdedAmount;
-  res.send({result: circulating});
+  res.send(circulating.toString());
 });
 
 module.exports = router;
