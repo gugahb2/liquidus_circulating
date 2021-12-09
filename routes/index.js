@@ -2,8 +2,8 @@ var express = require('express');
 var router = express.Router();
 const Web3 = require('web3');
 const web3 = new Web3('https://bsc-dataseed.binance.org:443');
-const FarmContractABI_LIQ_BNB = require('../config/FarmContractForLIQ_BNB.json');
-const FarmContractABI_LIQ_Single = require('../config/FarmContractForSingleToken.json');
+// const FarmContractABI_LIQ_BNB = require('../config/FarmContractForLIQ_BNB.json');
+// const FarmContractABI_LIQ_Single = require('../config/FarmContractForSingleToken.json');
 const LPTokenABI = require('../config/LPTokenABI.json');
 const { compoundingPeriod, rewardTokenAddress, farmContractList, decimals } = require('../config');
 const {
@@ -14,6 +14,7 @@ const {
   getLIQPrice,
   getBEP20TokenAccountBalanceByContractAddress
 } = require('../utils/usefulModule');
+const maxRateLimit = 4;
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -25,6 +26,12 @@ router.get('/total', async function(req, res, next) {
   const totalSupply = await getTotalSupply(rewardTokenAddress);
   res.send(totalSupply.toString());
 });
+
+function sleep(ms) {
+  return new Promise(
+    resolve => setTimeout(resolve, ms)
+  );
+}
 
 /* GET circulate */
 router.get('/circulate', async function(req, res, next) {
@@ -38,11 +45,11 @@ router.get('/circulate', async function(req, res, next) {
       const farmContract = new web3.eth.Contract(contract.abi, contract.address);
       const remainSupply = await farmContract.methods.rewardTokenSupplyRemaining().call();
       const rewardTokenSupply = parseBNumber(remainSupply, decimals);
-
       holdedAmount += rewardTokenSupply;
     } else {
-      const tokenbalance = await getBEP20TokenAccountBalanceByContractAddress(rewardTokenAddress, contract.address);
-      
+      const tokenContract = new web3.eth.Contract(LPTokenABI, rewardTokenAddress);
+      const balance = await tokenContract.methods.balanceOf(contract.address).call();
+      const tokenbalance = parseBNumber(balance, decimals);
       holdedAmount += tokenbalance;
     }
   }
@@ -61,15 +68,17 @@ router.get('/total-locked', async function(req, res, next) {
   let totalLiquidity = 0;
 
   for (const contract of farmContractList) {
-    if (contract.type === 'VESTED' || contract.type === 'OWNED') continue;
+    if (contract.type === 'VESTED' || contract.type === 'OWNED' || contract.type === 'NFT_STAKING') continue;
 
     const farmContract = new web3.eth.Contract(contract.abi, contract.address);
 
     if (contract.type === 'LIQ_BNB' || contract.type === 'LIQ_BUSD') {
       const lpToken = await farmContract.methods.lpToken().call();
       const tokenContract = new web3.eth.Contract(LPTokenABI, lpToken);
-      const cakeLp = await getBEP20TokenAccountBalanceByContractAddress(lpToken, contract.address); // LP staked
-      const totalSupply = await getTotalSupply(lpToken);
+      const balance = await tokenContract.methods.balanceOf(contract.address).call();
+      const cakeLp = parseBNumber(balance, decimals);
+      const total = await tokenContract.methods.totalSupply().call(); // total LP
+      const totalSupply = parseBNumber(total, decimals);
 
       const reserves = await tokenContract.methods.getReserves().call();
 
@@ -108,7 +117,7 @@ router.get('/max-apy', async function(req, res, next) {
   let maxAPY = 0;
 
   for (const contract of farmContractList) {
-    if (contract.type === 'VESTED' || contract.type === 'OWNED') continue;
+    if (contract.type === 'VESTED' || contract.type === 'OWNED' || contract.type === 'NFT_STAKING') continue;
 
     const farmContract = new web3.eth.Contract(contract.abi, contract.address);
     const rewardCnt = await farmContract.methods.rewardPerBlock().call();
@@ -117,8 +126,13 @@ router.get('/max-apy', async function(req, res, next) {
     if (contract.type === 'LIQ_BNB' || contract.type === 'LIQ_BUSD') {
       const lpToken = await farmContract.methods.lpToken().call();
       const tokenContract = new web3.eth.Contract(LPTokenABI, lpToken);
-      const cakeLp = await getBEP20TokenAccountBalanceByContractAddress(lpToken, contract.address); // LP staked
-      const totalSupply = await getTotalSupply(lpToken);
+      // const cakeLp = await getBEP20TokenAccountBalanceByContractAddress(lpToken, contract.address); // LP staked
+      // const totalSupply = await getTotalSupply(lpToken);
+      const balance = await tokenContract.methods.balanceOf(contract.address).call();
+      const cakeLp = parseBNumber(balance, decimals);
+      const total = await tokenContract.methods.totalSupply().call(); // total LP
+      const totalSupply = parseBNumber(total, decimals);
+
       const reserves = await tokenContract.methods.getReserves().call();
       let oneLP = 0;
       if (contract.type === 'LIQ_BNB') {

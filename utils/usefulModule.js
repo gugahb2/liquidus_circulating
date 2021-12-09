@@ -59,7 +59,6 @@ const getBEP20TokenAccountBalanceByContractAddress = async (tokenAddress, farmAd
             tag: 'latest',
             apikey: apiKey
         }));
-    
         const tokenBalance = parseBNumber(response.data.result, decimals);
         return tokenBalance;
     } catch (err) {
